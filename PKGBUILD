@@ -1,0 +1,64 @@
+# Maintainer: Joris Steyn <jorissteyn@gmail.com>
+pkgname=php-composer-git
+pkgver=1.0.0.alpha8.4324.28c65b5
+pkgrel=1
+pkgdesc="A dependency manager for PHP, built from source"
+arch=('any')
+url='http://getcomposer.org/'
+license=('MIT')
+depends=('php')
+makedepends=('git')
+provides=('php-composer')
+conflicts=('php-composer' 'composer' 'composer-git')
+
+# force php settings to allow building in a clean chroot
+# todo: fix proper timezone setting
+_phpargs="-n -d extension=phar.so -d open_basedir=/ -d phar.readonly=Off -d date.timezone=Europe/Amsterdam"
+
+# we actually need a composer.phar to build a new composer
+# use php-composer if you simply want to install the phar from getcomposer.org
+source=('git://github.com/composer/composer.git'
+        'http://getcomposer.org/download/1.0.0-alpha8/composer.phar')
+
+md5sums=('SKIP'
+         'ef51599395560988ea3e16912bfd70f8')
+
+pkgver() {
+  cd "$srcdir"/composer
+
+  # upstream doesn't use annotated tags, guess the last tag name
+  lasttag=$(git tag|grep '1.*'|tail -n1)
+
+  # desired format: [tagname]-[no. of commits]-[commit]
+  echo ${lasttag}-$(git rev-list --count master).$(git rev-parse --short master)| sed 's|-|.|g'
+}
+
+prepare() {
+  cd "$srcdir"/composer
+
+  msg 'Fetching composer dependencies...'
+
+  # using --prefer-source to work around bug:
+  #   https://github.com/composer/composer/issues/857
+  php $_phpargs ../composer.phar install --no-dev --prefer-source
+
+  # set version (output of composer --version)
+  sed -i "s/@package_version@/${pkgver}-arch/g" ./src/Composer/Composer.php
+}
+
+build() {
+  msg 'Compiling phar file...'
+
+  cd "$srcdir"/composer
+  ./bin/composer dump-autoload -o
+  php $_phpargs bin/compile
+}
+
+package() {
+  cd "$srcdir"/composer
+
+  install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+  install -Dm755 composer.phar "$pkgdir"/usr/bin/composer
+}
+
+# vim:set ts=2 sw=2 et:
